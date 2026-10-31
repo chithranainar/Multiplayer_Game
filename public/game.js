@@ -1,12 +1,10 @@
 const $ = (s) => document.querySelector(s);
 const palette = ['#c8f36b', '#a58af7', '#ff8a7d', '#65c9e8', '#ffc857', '#f08bc3'];
-const legacyAvatars = ['🐱', '🦊', '🐼', '🐸', '🐯', '🐰', '🐲', '🐺'];
 const avatarPresets = [
   ['anime-male-1', 'Kai'], ['anime-male-2', 'Ren'], ['anime-male-3', 'Sora'], ['anime-male-4', 'Haru'],
   ['anime-female-1', 'Aiko'], ['anime-female-2', 'Mika'], ['anime-female-3', 'Yuna'], ['anime-female-4', 'Emi'],
 ];
 let code = '', token = '', room = null, poller = null, ticker = null, toastTimer = null, drawnRound = -1, celebrationTimer = null;
-let savedPhoto = localStorage.getItem('colorDashPhoto') || '';
 let selectedAvatar = localStorage.getItem('colorDashAvatar') || 'anime-female-1';
 let audioContext = null, musicTimer = null, musicOn = false, musicStep = 0;
 const melodyNotes = [659.25, 783.99, 987.77, 783.99, 587.33, 698.46, 880, 698.46, 523.25, 659.25, 783.99, 1046.5, 587.33, 783.99, 987.77, 880];
@@ -233,33 +231,16 @@ function drawTimer() {
 }
 function leaveGame() { if (code && token) api(`/api/room/${code}/leave`, 'POST').catch(() => {}); clearInterval(poller); clearInterval(ticker); showHome(); room = null; code = ''; token = ''; }
 function initAvatars() {
-  if (!/^anime-(?:male|female)-[1-4]$/.test(selectedAvatar) && !legacyAvatars.includes(selectedAvatar) && !/^data:image\/(?:jpeg|png|webp);base64,/i.test(selectedAvatar)) selectedAvatar = 'anime-female-1';
+  if (!/^anime-(?:male|female)-[1-4]$/.test(selectedAvatar)) { selectedAvatar = 'anime-female-1'; localStorage.setItem('colorDashAvatar', selectedAvatar); }
   function paint() {
     const options = avatarPresets.map(([id, label]) => `<button type="button" class="avatar-option ${selectedAvatar === id ? 'selected' : ''}" data-avatar="${id}" aria-label="Choose ${label}" aria-pressed="${selectedAvatar === id}">${avatarVisual(id)}<small>${label}</small></button>`);
-    if (savedPhoto) options.push(`<button type="button" class="avatar-option photo-option ${selectedAvatar === savedPhoto ? 'selected' : ''}" data-photo="true" aria-label="Use your photo" aria-pressed="${selectedAvatar === savedPhoto}">${avatarVisual(savedPhoto)}<small>Your photo</small></button>`);
     $('#avatarOptions').innerHTML = options.join('');
     $('#avatarOptions').querySelectorAll('.avatar-option').forEach(b => b.addEventListener('click', () => {
-      selectedAvatar = b.dataset.photo ? savedPhoto : b.dataset.avatar; localStorage.setItem('colorDashAvatar', selectedAvatar);
-      $('#avatarOptions').querySelectorAll('.avatar-option').forEach(x => { const selected = x.dataset.photo ? selectedAvatar === savedPhoto : x.dataset.avatar === selectedAvatar; x.classList.toggle('selected', selected); x.setAttribute('aria-pressed', String(selected)); });
+      selectedAvatar = b.dataset.avatar; localStorage.setItem('colorDashAvatar', selectedAvatar);
+      $('#avatarOptions').querySelectorAll('.avatar-option').forEach(x => { const selected = x.dataset.avatar === selectedAvatar; x.classList.toggle('selected', selected); x.setAttribute('aria-pressed', String(selected)); });
     }));
   }
   paint();
-  $('#uploadAvatarBtn').addEventListener('click', () => $('#avatarFile').click());
-  $('#avatarFile').addEventListener('change', () => {
-    const file = $('#avatarFile').files?.[0]; if (!file) return;
-    if (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024) { flash('Choose an image under 10 MB.'); $('#avatarFile').value = ''; return; }
-    const objectUrl = URL.createObjectURL(file), image = new Image();
-    image.onload = () => {
-      const side = Math.min(image.naturalWidth, image.naturalHeight), x = (image.naturalWidth - side) / 2, y = (image.naturalHeight - side) / 2;
-      const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
-      canvas.getContext('2d').drawImage(image, x, y, side, side, 0, 0, 128, 128);
-      savedPhoto = canvas.toDataURL('image/jpeg', .78); selectedAvatar = savedPhoto;
-      localStorage.setItem('colorDashPhoto', savedPhoto); localStorage.setItem('colorDashAvatar', selectedAvatar);
-      URL.revokeObjectURL(objectUrl); $('#avatarFile').value = ''; paint(); flash('Photo ready. It will be shared with your room.');
-    };
-    image.onerror = () => { URL.revokeObjectURL(objectUrl); $('#avatarFile').value = ''; flash('That image could not be opened. Choose another one.'); };
-    image.src = objectUrl;
-  });
 }
 
 $('#createBtn').addEventListener('click', createRoom);
