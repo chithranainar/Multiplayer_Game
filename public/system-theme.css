@@ -1,6 +1,7 @@
 /* Automatically follow the device's light or dark appearance. */
 :root{color-scheme:light dark}
 @media(prefers-color-scheme:light){
+  #soloBtn,#soloBtn span{color:#6841d9}
   .btn-primary,.btn-primary span,.btn-secondary,.btn-secondary span,.menu-button,.music-toggle,.music-toggle[aria-pressed=true],.choice,.back-btn,.room-pill button,.share-close{color:#281641;font-weight:800}
 }
 @media(prefers-color-scheme:dark){
