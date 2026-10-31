@@ -14,15 +14,21 @@ const COLORS = [
 const AVATARS = ['🐱', '🦊', '🐼', '🐸', '🐯', '🐰', '🐲', '🐺'];
 const id = (n = 8) => crypto.randomBytes(n).toString('hex');
 const cleanName = (s) => String(s || '').trim().replace(/[<>]/g, '').slice(0, 16) || 'Player';
-const cleanAvatar = (s) => AVATARS.includes(s) ? s : AVATARS[0];
+const cleanAvatar = (s) => {
+  if (AVATARS.includes(s)) return s;
+  if (/^anime-(?:male|female)-[1-4]$/.test(String(s || ''))) return s;
+  if (s === 'computer') return s;
+  if (typeof s === 'string' && s.length <= 120000 && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/i.test(s)) return s;
+  return AVATARS[0];
+};
 function roomCode() { let c; do { c = crypto.randomBytes(3).toString('hex').toUpperCase(); } while (rooms.has(c)); return c; }
 function publicRoom(room, token) {
   return {
-    code: room.code, phase: room.phase, round: room.round, totalRounds: 4,
+    code: room.code, phase: room.phase, mode: room.mode, round: room.round, totalRounds: 4,
     target: room.phase === 'playing' ? room.target : null,
     choices: room.phase === 'playing' ? room.choices : [],
     endsAt: room.endsAt,
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, answered: !!p.answered })),
+    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, answered: !!p.answered, isBot: !!p.isBot })),
     matches: room.matches, roundHistory: room.roundHistory, matchNo: room.matchNo,
     me: [...room.players.values()].find(p => p.token === token)?.id || null,
     host: room.host,
@@ -37,13 +43,27 @@ function beginRound(room) {
   room.roundBaseScores = new Map([...room.players.values()].map(p => [p.id, p.score]));
   room.roundRecorded = false;
   room.endsAt = Date.now() + 9000;
-  clearTimeout(room.timer);
+  clearTimeout(room.timer); clearTimeout(room.botTimer);
   room.timer = setTimeout(() => {
-    if (room.phase !== 'playing') return;
-    recordRound(room);
-    room.phase = room.round >= 4 ? 'finished' : 'between';
-    if (room.phase === 'finished') finishMatch(room);
+    advanceRound(room);
   }, 9100);
+  const bot = [...room.players.values()].find(p => p.isBot);
+  if (bot) room.botTimer = setTimeout(() => {
+    if (room.phase !== 'playing' || bot.answered) return;
+    bot.answered = true;
+    const elapsed = Math.max(0, 9000 - (room.endsAt - Date.now()));
+    if (Math.random() < 0.78) bot.score += Math.max(100, Math.round(1000 * (1 - elapsed / 11500)));
+    completeRoundIfReady(room);
+  }, 1200 + Math.random() * 3000);
+}
+function advanceRound(room) {
+  if (room.phase !== 'playing') return;
+  clearTimeout(room.timer); clearTimeout(room.botTimer); recordRound(room);
+  room.phase = room.round >= 4 ? 'finished' : 'between';
+  if (room.phase === 'finished') finishMatch(room);
+}
+function completeRoundIfReady(room) {
+  if (room.phase === 'playing' && [...room.players.values()].every(p => p.answered)) advanceRound(room);
 }
 function recordRound(room) {
   if (room.roundRecorded) return;
@@ -69,14 +89,21 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
   if (req.method === 'POST' && url.pathname === '/api/create') {
     const data = await body(req); const code = roomCode(); const token = id(16); const playerId = id(5);
-    const room = { code, host: playerId, phase: 'lobby', round: 0, matchNo: 1, target: null, choices: [], endsAt: null, timer: null, createdAt: Date.now(),
+    const solo = data.mode === 'solo';
+    const room = { code, host: playerId, mode: solo ? 'solo' : 'multiplayer', phase: 'lobby', round: 0, matchNo: 1, target: null, choices: [], endsAt: null, timer: null, botTimer: null, createdAt: Date.now(),
       matches: [], roundHistory: [], roundBaseScores: new Map(), roundRecorded: false, matchSaved: false,
       players: new Map([[playerId, { id: playerId, token, name: cleanName(data.name), avatar: cleanAvatar(data.avatar), score: 0, answered: false }]]) };
+    if (solo) {
+      const botId = `bot-${id(3)}`;
+      room.players.set(botId, { id: botId, token: null, name: 'Byte Bot', avatar: 'computer', score: 0, answered: false, isBot: true });
+    }
+    if (solo) beginRound(room);
     rooms.set(code, room); return respond(res, 200, { token, room: publicRoom(room, token) });
   }
   if (req.method === 'POST' && url.pathname === '/api/join') {
     const data = await body(req); const room = rooms.get(String(data.code || '').toUpperCase());
     if (!room) return respond(res, 404, { error: 'That room code isn’t here. Check it and try again.' });
+    if (room.mode === 'solo') return respond(res, 400, { error: 'That room is playing solo. Create a multiplayer room to invite friends.' });
     if (room.phase !== 'lobby') return respond(res, 400, { error: 'This game has already started. Ask the host to make a new room.' });
     if (room.players.size >= 12) return respond(res, 400, { error: 'This room is full (12 players max).' });
     const token = id(16); const playerId = id(5); room.players.set(playerId, { id: playerId, token, name: cleanName(data.name), avatar: cleanAvatar(data.avatar), score: 0, answered: false });
@@ -101,10 +128,7 @@ const server = http.createServer(async (req, res) => {
       player.answered = true;
       const elapsed = Math.max(0, 9000 - (room.endsAt - Date.now()));
       if (data.choice === room.target.name) player.score += Math.max(100, Math.round(1000 * (1 - elapsed / 11500)));
-      if ([...room.players.values()].every(p => p.answered)) {
-        clearTimeout(room.timer); recordRound(room); room.phase = room.round >= 4 ? 'finished' : 'between';
-        if (room.phase === 'finished') finishMatch(room);
-      }
+      completeRoundIfReady(room);
       return respond(res, 200, { room: publicRoom(room, token) });
     }
     if (req.method === 'POST' && action === 'next') {
@@ -118,12 +142,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && action === 'leave') {
       room.players.delete(player.id);
-      if (!room.players.size) { clearTimeout(room.timer); rooms.delete(room.code); return respond(res, 200, { ok: true }); }
+      if (![...room.players.values()].some(p => !p.isBot)) { clearTimeout(room.timer); clearTimeout(room.botTimer); rooms.delete(room.code); return respond(res, 200, { ok: true }); }
       if (room.host === player.id) room.host = room.players.keys().next().value;
-      if (room.phase === 'playing' && [...room.players.values()].every(p => p.answered)) {
-        clearTimeout(room.timer); recordRound(room); room.phase = room.round >= 4 ? 'finished' : 'between';
-        if (room.phase === 'finished') finishMatch(room);
-      }
+      completeRoundIfReady(room);
       return respond(res, 200, { ok: true });
     }
   }
