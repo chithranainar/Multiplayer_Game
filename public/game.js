@@ -67,25 +67,25 @@ async function joinRoom(input) {
   catch (e) { flash(e.message); }
 }
 function inviteUrl() { return `${location.origin}/?room=${encodeURIComponent(code)}`; }
-function inviteMessage() { return `Join my Color Dash game! Room code: ${code}\nTap to join: ${inviteUrl()}`; }
+function inviteMessage() { return `Join my Ink Clash game! Room code: ${code}\nTap to join: ${inviteUrl()}`; }
 async function copyText(value, success) {
   try { await navigator.clipboard.writeText(value); flash(success); }
   catch { openShareDialog(); flash('Use the invite options to copy or share the link.'); }
 }
 function openShareDialog() {
-  const url = inviteUrl(); const message = `Join my Color Dash game! Room code: ${code}`;
+  const url = inviteUrl(); const message = `Join my Ink Clash game! Room code: ${code}`;
   $('#inviteLink').value = url;
   $('#waShare').href = `https://wa.me/?text=${encodeURIComponent(`${message}\n${url}`)}`;
   $('#tgShare').href = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(message)}`;
   $('#xShare').href = `https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}&url=${encodeURIComponent(url)}`;
   $('#fbShare').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(message)}`;
-  $('#emailShare').href = `mailto:?subject=${encodeURIComponent('Join my Color Dash game')}&body=${encodeURIComponent(inviteMessage())}`;
+  $('#emailShare').href = `mailto:?subject=${encodeURIComponent('Join my Ink Clash game')}&body=${encodeURIComponent(inviteMessage())}`;
   $('#shareDialog').showModal();
 }
 async function shareInvite() {
   if (!code) return;
   if (navigator.share) {
-    try { await navigator.share({ title: 'Join my Color Dash game', text: `Room code: ${code}`, url: inviteUrl() }); return; }
+    try { await navigator.share({ title: 'Join my Ink Clash game', text: `Room code: ${code}`, url: inviteUrl() }); return; }
     catch (e) { if (e.name === 'AbortError') return; }
   }
   openShareDialog();
@@ -95,7 +95,7 @@ function startPolling() {
   poller = setInterval(async () => { try { const d = await api(`/api/room/${code}`); setRoom(d.room); } catch (e) { clearInterval(poller); flash(e.message); } }, 850);
   ticker = setInterval(() => { if (room?.phase === 'playing') drawTimer(); }, 180);
 }
-function sortedPlayers(players) { return [...players].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)); }
+function sortedPlayers(players) { return [...players].sort((a, b) => Number(!!a.forfeited) - Number(!!b.forfeited) || b.score - a.score || a.name.localeCompare(b.name)); }
 function scores(target) {
   target.innerHTML = sortedPlayers(room.players).map((p, i) => `<div class="score-row"><span class="avatar-score">${avatarVisual(p.avatar || 'anime-female-1')}</span><span class="mini-dot" style="background:${palette[i % palette.length]}"></span><span>${escapeHtml(p.name)}${p.isBot ? ' <small>CPU</small>' : p.id === room.me ? ' <small>(you)</small>' : ''}</span><b>${p.score.toLocaleString()}</b>${p.answered && room.phase === 'playing' ? '<span class="answered-mark">✓</span>' : ''}</div>`).join('');
 }
@@ -107,7 +107,7 @@ function renderBreakdown(target, rounds) {
 }
 function renderFinalBoard() {
   const ranked = sortedPlayers(room.players), max = Math.max(1, ...ranked.map(p => p.score));
-  $('#finalScores').innerHTML = ranked.map((p, i) => `<div class="final-score-row ${i === 0 ? 'winner-row' : ''}"><span class="rank">${String(i + 1).padStart(2, '0')}</span><span class="final-avatar">${avatarVisual(p.avatar || 'anime-female-1')}</span><div class="final-player"><div><b>${escapeHtml(p.name)}</b>${p.isBot ? '<small>CPU</small>' : p.id === room.me ? '<small>YOU</small>' : ''}</div><div class="score-meter"><i style="width:${p.score / max * 100}%"></i></div></div><strong>${p.score.toLocaleString()}</strong></div>`).join('');
+  $('#finalScores').innerHTML = ranked.map((p, i) => `<div class="final-score-row ${i === 0 && !p.forfeited ? 'winner-row' : ''} ${p.forfeited ? 'forfeited-row' : ''}"><span class="rank">${String(i + 1).padStart(2, '0')}</span><span class="final-avatar">${avatarVisual(p.avatar || 'anime-female-1')}</span><div class="final-player"><div><b>${escapeHtml(p.name)}</b>${p.forfeited ? '<small>FORFEIT · OUT</small>' : p.isBot ? '<small>CPU</small>' : p.id === room.me ? '<small>YOU</small>' : ''}</div><div class="score-meter"><i style="width:${p.score / max * 100}%"></i></div></div><strong>${p.score.toLocaleString()}</strong></div>`).join('');
   renderBreakdown($('#finalRounds'), room.roundHistory);
 }
 function renderHistory() {
@@ -117,7 +117,7 @@ function renderHistory() {
   if (!matches.length) { target.innerHTML = '<div class="history-empty">Your completed matches will show up here.</div>'; return; }
   target.innerHTML = matches.map(m => {
     const winner = m.players?.[0]; const date = m.finishedAt ? new Date(m.finishedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
-    const board = (m.players || []).map((p, i) => `<div class="history-player"><span class="rank">${i + 1}</span><span>${avatarVisual(p.avatar || 'anime-female-1')}</span><b>${escapeHtml(p.name)}</b><strong>${p.score.toLocaleString()}</strong></div>`).join('');
+    const board = (m.players || []).map((p, i) => `<div class="history-player"><span class="rank">${i + 1}</span><span>${avatarVisual(p.avatar || 'anime-female-1')}</span><b>${escapeHtml(p.name)}${p.forfeited ? ' · FORFEIT' : ''}</b><strong>${p.score.toLocaleString()}</strong></div>`).join('');
     return `<article class="history-match"><div class="history-match-head"><b>ROOM ${escapeHtml(m.roomCode || '')} · MATCH ${m.number}</b><span>${escapeHtml(date)}</span></div><p>🏆 ${escapeHtml(winner?.name || 'Match complete')} won with ${(winner?.score || 0).toLocaleString()} points</p><div class="history-board">${board}</div><details><summary>Round-by-round graphics</summary><div class="history-chart-wrap"></div></details></article>`;
   }).join('');
   const wraps = target.querySelectorAll('.history-chart-wrap');
@@ -182,14 +182,14 @@ function render() {
   $('#roomType').textContent = room.mode === 'solo' ? 'SOLO' : 'ROOM'; $('#copyCode').classList.toggle('hidden', room.mode === 'solo');
   $('#roundInfo').textContent = room.phase === 'playing' ? `ROUND ${room.round} / 4` : room.phase === 'finished' ? 'FINAL SCORES' : room.phase === 'between' ? 'ROUND BREAK' : 'LOBBY';
   $('#playerCount').textContent = room.players.length;
-  $('#playerList').innerHTML = room.players.map((p, i) => `<div class="player-chip"><span class="avatar" style="background:${palette[i % palette.length]}">${avatarVisual(p.avatar || 'anime-female-1')}</span>${escapeHtml(p.name)}${p.isBot ? '<span class="host-tag">CPU</span>' : p.id === room.host ? '<span class="host-tag">HOST</span>' : ''}${p.id === room.me ? '<span class="host-tag">YOU</span>' : ''}</div>`).join('');
+  $('#playerList').innerHTML = room.players.map((p, i) => `<div class="player-chip ${p.forfeited ? 'forfeited-player' : ''}"><span class="avatar" style="background:${palette[i % palette.length]}">${avatarVisual(p.avatar || 'anime-female-1')}</span>${escapeHtml(p.name)}${p.forfeited ? '<span class="host-tag">FORFEIT</span>' : p.isBot ? '<span class="host-tag">CPU</span>' : p.id === room.host ? '<span class="host-tag">HOST</span>' : ''}${p.id === room.me && !p.forfeited ? '<span class="host-tag">YOU</span>' : ''}</div>`).join('');
   const isHost = room.me === room.host;
   $('#lobbyView').classList.toggle('hidden', room.phase !== 'lobby'); $('#roundView').classList.toggle('hidden', room.phase !== 'playing');
   $('#betweenView').classList.toggle('hidden', room.phase !== 'between'); $('#finishedView').classList.toggle('hidden', room.phase !== 'finished');
   if (room.phase === 'lobby') { $('#startBtn').disabled = !isHost || room.players.length < 2; $('#startBtn').innerHTML = room.players.length < 2 ? 'Waiting for a friend… <span>↗</span>' : 'Start the game <span>↗</span>'; $('#hostHint').textContent = isHost ? 'You’re the host — start when everyone’s in.' : 'The host will start the game when everyone’s ready.'; }
   if (room.phase === 'playing') { if (drawnRound !== room.round) drawRound(); else updateChoiceLocks(); drawTimer(); }
   if (room.phase === 'between') {
-    $('#betweenTitle').innerHTML = 'Nice reflexes<span class="period">.</span>'; $('#betweenSub').textContent = room.round < 4 ? `Round ${room.round} complete. Get ready for the next color dash!` : 'All rounds complete. The final results are ready!';
+    $('#betweenTitle').innerHTML = 'Nice reflexes<span class="period">.</span>'; $('#betweenSub').textContent = room.round < 4 ? `Round ${room.round} complete. Get ready for the next Ink Clash!` : 'All rounds complete. The final results are ready!';
     $('#nextBtn').classList.toggle('hidden', !isHost); $('#nextHint').classList.toggle('hidden', isHost); $('#nextBtn').textContent = `Round ${room.round + 1} of 4 →`;
   }
   if (room.phase === 'finished') {
@@ -229,7 +229,12 @@ function drawTimer() {
   const remain = Math.max(0, room.endsAt - Date.now()); $('#timerBar').style.width = `${remain / 9000 * 100}%`; $('#timerText').textContent = Math.ceil(remain / 1000);
   if (!remain) $('#tapPrompt').textContent = 'Time! Round complete.';
 }
-function leaveGame() { if (code && token) api(`/api/room/${code}/leave`, 'POST').catch(() => {}); clearInterval(poller); clearInterval(ticker); showHome(); room = null; code = ''; token = ''; }
+async function leaveGame() {
+  if (room && ['playing', 'between'].includes(room.phase) && !window.confirm('Leave and forfeit this match? You won’t be able to rejoin this game.')) return;
+  try { if (code && token) await api(`/api/room/${code}/leave`, 'POST'); }
+  catch (e) { flash(e.message); return; }
+  clearInterval(poller); clearInterval(ticker); showHome(); room = null; code = ''; token = '';
+}
 function initAvatars() {
   if (!/^anime-(?:male|female)-[1-4]$/.test(selectedAvatar)) { selectedAvatar = 'anime-female-1'; localStorage.setItem('colorDashAvatar', selectedAvatar); }
   function paint() {
