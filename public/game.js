@@ -9,7 +9,7 @@ let code = '', token = '', room = null, poller = null, ticker = null, toastTimer
 let savedPhoto = localStorage.getItem('colorDashPhoto') || '';
 let selectedAvatar = localStorage.getItem('colorDashAvatar') || 'anime-female-1';
 let audioContext = null, musicTimer = null, musicOn = false, musicStep = 0;
-const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 739.99, 880, 739.99];
+const notes = [523.25, 659.25, 783.99, 1046.5, 783.99, 659.25, 587.33, 783.99, 698.46, 880, 1046.5, 1318.5, 1046.5, 880, 783.99, 659.25];
 
 const api = async (path, method = 'GET', data) => {
   const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json', 'X-Player-Token': token }, ...(data ? { body: JSON.stringify(data) } : {}) });
@@ -17,24 +17,8 @@ const api = async (path, method = 'GET', data) => {
 };
 function flash(message) { const el = $('#toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2400); }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
-function animeAvatarUri(id) {
-  const match = /^anime-(male|female)-([1-4])$/.exec(id); if (!match) return '';
-  const female = match[1] === 'female', variant = Number(match[2]) - 1;
-  const hair = ['#38283f', '#8a4a32', '#283e60', '#b6556f'][variant];
-  const skin = ['#f6c8a8', '#eab795', '#f4d0b1', '#d99b79'][variant];
-  const shirt = ['#a58af7', '#65c9e8', '#ff8a7d', '#c8f36b'][variant];
-  const backHair = female
-    ? `<path d="M18 49C14 19 29 8 49 8c23 0 35 15 31 41l-5 31H22z" fill="${hair}"/>`
-    : `<path d="M20 42C17 19 31 9 49 9c21 0 31 13 28 34l-8 7H27z" fill="${hair}"/>`;
-  const fringe = female
-    ? `<path d="M21 34c4-17 16-22 28-22 14 0 23 8 27 22-9-4-15-12-18-14-4 10-17 16-37 14z" fill="${hair}"/>`
-    : `<path d="M20 37c1-19 13-28 29-28 17 0 27 10 28 26-9-3-13-9-18-15-7 9-20 15-39 17z" fill="${hair}"/>`;
-  const sideHair = female ? `<path d="M21 35c-4 18-1 37 5 48H17C8 62 12 42 21 35zm53 0c9 13 9 33 2 48h-9c5-17 4-32 7-48z" fill="${hair}"/>` : '';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><circle cx="48" cy="48" r="47" fill="#343044"/><circle cx="48" cy="48" r="41" fill="${shirt}" opacity=".25"/><path d="M17 96c2-20 13-27 31-27s29 7 31 27" fill="${shirt}"/><path d="M39 64h18v17H39z" fill="${skin}"/>${backHair}<ellipse cx="48" cy="47" rx="24" ry="28" fill="${skin}"/><path d="M26 44c5-2 10-2 15 0m14 0c5-2 10-2 15 0" fill="none" stroke="#593e4c" stroke-width="2" stroke-linecap="round"/><ellipse cx="36" cy="49" rx="5" ry="7" fill="#fff"/><ellipse cx="60" cy="49" rx="5" ry="7" fill="#fff"/><ellipse cx="37" cy="51" rx="2.4" ry="4" fill="#433656"/><ellipse cx="61" cy="51" rx="2.4" ry="4" fill="#433656"/><circle cx="36" cy="49" r="1.2" fill="#fff"/><circle cx="60" cy="49" r="1.2" fill="#fff"/><path d="M43 64c3 3 8 3 11 0" fill="none" stroke="#ae5e67" stroke-width="2" stroke-linecap="round"/><path d="M27 58c4 3 7 3 10 2m32 0c3 1 6 1 10-2" fill="none" stroke="#e58a8a" stroke-width="3" stroke-linecap="round" opacity=".55"/>${sideHair}${fringe}<path d="M42 27c5-4 12-4 17 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/></svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
 function avatarVisual(value, extra = '') {
-  if (/^anime-(?:male|female)-[1-4]$/.test(value || '')) return `<img class="avatar-art ${extra}" src="${escapeHtml(animeAvatarUri(value))}" alt=""/>`;
+  if (/^anime-(?:male|female)-[1-4]$/.test(value || '')) return `<span class="avatar-art cartoon-avatar ${value}" role="img" aria-label="${value.includes('male') ? 'Male' : 'Female'} cartoon avatar"></span>`;
   if (/^data:image\/(?:jpeg|png|webp);base64,/i.test(value || '')) return `<img class="avatar-art ${extra}" src="${escapeHtml(value)}" alt="Player photo"/>`;
   if (value === 'computer') return `<span class="robot-avatar ${extra}" aria-label="Computer">🤖</span>`;
   return `<span class="emoji-avatar ${extra}">${escapeHtml(value || 'anime-female-1')}</span>`;
@@ -143,8 +127,14 @@ async function toggleMusic() {
   if (audioContext.state === 'suspended') await audioContext.resume();
   musicOn = !musicOn;
   if (musicOn) {
-    const melody = () => { playNote(notes[musicStep % notes.length], .22, .018, 'sine'); if (musicStep % 4 === 0) playNote(notes[(musicStep + 2) % notes.length] / 2, .33, .012, 'triangle'); musicStep++; };
-    melody(); musicTimer = setInterval(melody, 360);
+    const melody = () => {
+      const beat = musicStep % notes.length;
+      playNote(notes[beat], .13, .014, 'square');
+      if (beat % 2 === 0) playNote(notes[(beat + 4) % notes.length] / 2, .2, .009, 'triangle');
+      if (beat % 4 === 2) playNote(notes[(beat + 7) % notes.length] * 2, .07, .006, 'square');
+      musicStep++;
+    };
+    melody(); musicTimer = setInterval(melody, 210);
   } else { clearInterval(musicTimer); musicTimer = null; }
   $('#musicToggle').textContent = musicOn ? '♫ Music on' : '♫ Music off'; $('#musicToggle').setAttribute('aria-pressed', String(musicOn));
 }
@@ -166,11 +156,9 @@ function render() {
   $('#lobbyView').classList.toggle('hidden', room.phase !== 'lobby'); $('#roundView').classList.toggle('hidden', room.phase !== 'playing');
   $('#betweenView').classList.toggle('hidden', room.phase !== 'between'); $('#finishedView').classList.toggle('hidden', room.phase !== 'finished');
   if (room.phase === 'lobby') { $('#startBtn').disabled = !isHost || room.players.length < 2; $('#startBtn').innerHTML = room.players.length < 2 ? 'Waiting for a friend… <span>↗</span>' : 'Start the game <span>↗</span>'; $('#hostHint').textContent = isHost ? 'You’re the host — start when everyone’s in.' : 'The host will start the game when everyone’s ready.'; }
-  if (room.phase === 'playing') { if (drawnRound !== room.round) drawRound(); else updateChoiceLocks(); scores($('#scoreboard')); drawTimer(); }
+  if (room.phase === 'playing') { if (drawnRound !== room.round) drawRound(); else updateChoiceLocks(); drawTimer(); }
   if (room.phase === 'between') {
-    $('#betweenTitle').innerHTML = 'Nice reflexes<span class="period">.</span>'; $('#betweenSub').textContent = `Round ${room.round} is in the books. Here’s how the crew is doing.`; scores($('#betweenScores'));
-    renderBreakdown($('#betweenRounds'), room.roundHistory);
-    renderBreakdown($('#betweenRounds'), room.roundHistory);
+    $('#betweenTitle').innerHTML = 'Nice reflexes<span class="period">.</span>'; $('#betweenSub').textContent = room.round < 4 ? `Round ${room.round} complete. Get ready for the next color dash!` : 'All rounds complete. The final results are ready!';
     $('#nextBtn').classList.toggle('hidden', !isHost); $('#nextHint').classList.toggle('hidden', isHost); $('#nextBtn').textContent = `Round ${room.round + 1} of 4 →`;
   }
   if (room.phase === 'finished') {
@@ -191,12 +179,10 @@ async function answer(button) {
   if (room.phase !== 'playing' || room.players.find(p => p.id === room.me)?.answered) return;
   $('#choices').querySelectorAll('button').forEach(b => b.disabled = true);
   const before = room.players.find(p => p.id === room.me)?.score || 0;
-  const correct = button.dataset.name === room.target.name; button.classList.add(correct ? 'correct' : 'wrong'); const fx = tapGraphic(button, correct);
+  const correct = button.dataset.name === room.target.name; button.classList.add(correct ? 'correct' : 'wrong'); tapGraphic(button, correct);
   $('#tapPrompt').textContent = correct ? 'That’s the one! Nice reflexes.' : `Not quite — the target was ${room.target.name}.`;
   try {
     const d = await api(`/api/room/${code}/answer`, 'POST', { choice: button.dataset.name });
-    const after = d.room.players.find(p => p.id === d.room.me)?.score || before; const points = after - before;
-    if (points > 0) fx.textContent = `+${points}`;
     setRoom(d.room);
   }
   catch (e) { flash(e.message); }
@@ -210,7 +196,7 @@ function updateChoiceLocks() {
 function drawTimer() {
   if (room?.phase !== 'playing') return;
   const remain = Math.max(0, room.endsAt - Date.now()); $('#timerBar').style.width = `${remain / 9000 * 100}%`; $('#timerText').textContent = Math.ceil(remain / 1000);
-  if (!remain) $('#tapPrompt').textContent = 'Time! Here comes the score…';
+  if (!remain) $('#tapPrompt').textContent = 'Time! Round complete.';
 }
 function leaveGame() { if (code && token) api(`/api/room/${code}/leave`, 'POST').catch(() => {}); clearInterval(poller); clearInterval(ticker); showHome(); room = null; code = ''; token = ''; }
 function initAvatars() {
@@ -265,4 +251,5 @@ $('#historyDialog').addEventListener('click', e => { if (e.target === $('#histor
 initAvatars();
 const inviteRoom = new URLSearchParams(location.search).get('room');
 if (inviteRoom && /^[A-Z0-9]{6}$/i.test(inviteRoom)) { $('#roomCode').value = inviteRoom.toUpperCase(); $('#joinForm').classList.remove('hidden'); $('#joinToggle').textContent = `Join room ${inviteRoom.toUpperCase()} →`; }
+
 
