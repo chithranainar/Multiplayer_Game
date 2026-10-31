@@ -48,6 +48,7 @@ function setRoom(r) {
 }
 function playWinnerBurst() {
   const panel = $('#finishedView');
+  playWinnerCheer();
   panel.classList.remove('celebrate');
   void panel.offsetWidth;
   panel.classList.add('celebrate');
@@ -124,16 +125,39 @@ function renderHistory() {
   const wraps = target.querySelectorAll('.history-chart-wrap');
   matches.forEach((m, i) => { if (wraps[i]) renderBreakdown(wraps[i], m.rounds); });
 }
-function playNote(frequency, seconds = .18, volume = .04, type = 'sine') {
-  if (!audioContext || !musicOn) return;
+function audioEngine() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!audioContext) audioContext = new AudioCtx();
+  return audioContext;
+}
+function playTone(frequency, seconds = .18, volume = .04, type = 'sine', delay = 0) {
+  if (!audioContext) return;
   const osc = audioContext.createOscillator(), gain = audioContext.createGain(), now = audioContext.currentTime;
-  osc.type = type; osc.frequency.value = frequency; gain.gain.setValueAtTime(.0001, now); gain.gain.exponentialRampToValueAtTime(volume, now + .025); gain.gain.exponentialRampToValueAtTime(.0001, now + seconds);
-  osc.connect(gain); gain.connect(audioContext.destination); osc.start(now); osc.stop(now + seconds + .02);
+  const start = now + delay;
+  osc.type = type; osc.frequency.value = frequency; gain.gain.setValueAtTime(.0001, start); gain.gain.exponentialRampToValueAtTime(volume, start + .025); gain.gain.exponentialRampToValueAtTime(.0001, start + seconds);
+  osc.connect(gain); gain.connect(audioContext.destination); osc.start(start); osc.stop(start + seconds + .02);
+}
+function playNote(frequency, seconds = .18, volume = .04, type = 'sine') {
+  if (musicOn) playTone(frequency, seconds, volume, type);
+}
+function playTapSound(correct) {
+  const ctx = audioEngine(); if (!ctx) return;
+  ctx.resume().then(() => {
+    playTone(correct ? 880 : 196, correct ? .14 : .12, correct ? .045 : .035, correct ? 'triangle' : 'sine');
+    if (correct) playTone(1174.66, .18, .035, 'sine', .08);
+  }).catch(() => {});
+}
+function playWinnerCheer() {
+  const ctx = audioEngine(); if (!ctx) return;
+  ctx.resume().then(() => {
+    [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((note, i) => playTone(note, .34, .04, 'triangle', i * .11));
+    [659.25, 783.99, 987.77].forEach(note => playTone(note, .95, .024, 'sine', .62));
+    playTone(329.63, .8, .035, 'sine', .62);
+  }).catch(() => {});
 }
 async function toggleMusic() {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return flash('Music isn’t supported in this browser.');
-  if (!audioContext) audioContext = new AudioCtx();
+  if (!audioEngine()) return flash('Music isn’t supported in this browser.');
   if (audioContext.state === 'suspended') await audioContext.resume();
   musicOn = !musicOn;
   if (musicOn) {
@@ -152,7 +176,7 @@ function tapGraphic(button, correct) {
   button.classList.add('tap-pop-correct', correct ? 'tap-pop-right' : 'tap-pop-wrong');
   const fx = document.createElement('span'); fx.className = 'tap-feedback'; fx.textContent = correct ? '✦ NICE!' : '✕'; button.append(fx);
   setTimeout(() => { button.classList.remove('tap-pop-correct', 'tap-pop-right', 'tap-pop-wrong'); fx.remove(); }, 900);
-  if (musicOn) { if (correct) { playNote(783.99, .15, .035); setTimeout(() => playNote(1046.5, .18, .035), 90); } else playNote(220, .2, .025, 'triangle'); }
+  playTapSound(correct);
 }
 function render() {
   if (!room) return;
@@ -179,8 +203,9 @@ function render() {
 }
 function drawRound() {
   drawnRound = room.round; $('#roundLabel').textContent = `ROUND ${room.round} OF 4`;
-  $('#bigTarget').style.background = room.target.hex; $('#targetCaption').textContent = room.target.name.toUpperCase();
-  $('#choices').innerHTML = room.choices.map(c => `<button class="choice" data-name="${c.name}" aria-label="${c.name}"><div class="swatch" style="background:${c.hex}"></div>${c.name}</button>`).join('');
+  $('#bigTarget').textContent = room.target.name.toUpperCase(); $('#bigTarget').style.color = room.target.inkHex || '#ff749a';
+  $('#targetCaption').textContent = 'IGNORE THE INK · PICK THE WORD';
+  $('#choices').innerHTML = room.choices.map((c, i) => `<button class="choice" data-name="${c.name}" aria-label="${c.name}, press ${i + 1}" aria-keyshortcuts="${i + 1}"><div class="swatch" style="background:${c.hex}"></div><span class="choice-name">${c.name}</span><kbd>${i + 1}</kbd></button>`).join('');
   $('#choices').querySelectorAll('.choice').forEach(button => button.addEventListener('click', () => answer(button)));
   updateChoiceLocks();
 }
@@ -198,7 +223,7 @@ async function answer(button) {
 function updateChoiceLocks() {
   const me = room.players.find(p => p.id === room.me); const answered = !!me?.answered;
   $('#choices').querySelectorAll('.choice').forEach(b => { b.disabled = answered; if (answered && b.dataset.name === room.target.name) b.classList.add('correct'); });
-  if (!answered) $('#tapPrompt').textContent = 'Tap its match below. Faster taps score more!';
+  if (!answered) $('#tapPrompt').textContent = 'Tap the color name below, or press 1–4. Faster answers score more!';
   else if (!$('#tapPrompt').textContent.startsWith('That’s') && !$('#tapPrompt').textContent.startsWith('Not quite')) $('#tapPrompt').textContent = 'Locked in! See how your friends do…';
 }
 function drawTimer() {
@@ -255,6 +280,19 @@ $('#howToOpen').addEventListener('click', () => $('#howToDialog').showModal());
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => $(`#${b.dataset.close}`).close()));
 $('#historyBtn').addEventListener('click', () => { renderHistory(); $('#historyDialog').showModal(); });
 $('#musicToggle').addEventListener('click', toggleMusic);
+function unlockAudio() {
+  const ctx = audioEngine();
+  if (ctx?.state === 'suspended') ctx.resume().catch(() => {});
+}
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+document.addEventListener('keydown', unlockAudio, { once: true });
+document.addEventListener('keydown', e => {
+  if (room?.phase !== 'playing' || e.altKey || e.ctrlKey || e.metaKey || e.target?.matches('input,textarea,select,[contenteditable="true"]') || $('#howToDialog').open || $('#historyDialog').open) return;
+  const index = Number(e.key) - 1;
+  if (index < 0 || index > 3) return;
+  const button = $('#choices').querySelectorAll('.choice')[index];
+  if (button && !button.disabled) { e.preventDefault(); button.click(); }
+});
 $('#historyDialog').addEventListener('click', e => { if (e.target === $('#historyDialog')) $('#historyDialog').close(); });
 initAvatars();
 const inviteRoom = new URLSearchParams(location.search).get('room');
