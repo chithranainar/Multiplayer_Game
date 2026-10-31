@@ -25,7 +25,7 @@ function roomCode() { let c; do { c = crypto.randomBytes(3).toString('hex').toUp
 function publicRoom(room, token) {
   return {
     code: room.code, phase: room.phase, mode: room.mode, round: room.round, totalRounds: 4,
-    target: room.phase === 'playing' ? room.target : null,
+    target: room.phase === 'playing' ? { ...room.target, inkHex: room.inkColor?.hex } : null,
     choices: room.phase === 'playing' ? room.choices : [],
     endsAt: room.endsAt,
     players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, answered: !!p.answered, isBot: !!p.isBot })),
@@ -38,6 +38,7 @@ function beginRound(room) {
   room.phase = 'playing'; room.round += 1;
   room.target = COLORS[Math.floor(Math.random() * COLORS.length)];
   const others = COLORS.filter(c => c.name !== room.target.name);
+  room.inkColor = others[Math.floor(Math.random() * others.length)];
   room.choices = [room.target, ...others.sort(() => Math.random() - .5).slice(0, 3)].sort(() => Math.random() - .5);
   for (const p of room.players.values()) p.answered = false;
   room.roundBaseScores = new Map([...room.players.values()].map(p => [p.id, p.score]));
