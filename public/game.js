@@ -9,7 +9,8 @@ let code = '', token = '', room = null, poller = null, ticker = null, toastTimer
 let savedPhoto = localStorage.getItem('colorDashPhoto') || '';
 let selectedAvatar = localStorage.getItem('colorDashAvatar') || 'anime-female-1';
 let audioContext = null, musicTimer = null, musicOn = false, musicStep = 0;
-const notes = [523.25, 659.25, 783.99, 1046.5, 783.99, 659.25, 587.33, 783.99, 698.46, 880, 1046.5, 1318.5, 1046.5, 880, 783.99, 659.25];
+const melodyNotes = [659.25, 783.99, 987.77, 783.99, 587.33, 698.46, 880, 698.46, 523.25, 659.25, 783.99, 1046.5, 587.33, 783.99, 987.77, 880];
+const bassNotes = [164.81, 130.81, 146.83, 146.83];
 
 const api = async (path, method = 'GET', data) => {
   const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json', 'X-Player-Token': token }, ...(data ? { body: JSON.stringify(data) } : {}) });
@@ -128,13 +129,13 @@ async function toggleMusic() {
   musicOn = !musicOn;
   if (musicOn) {
     const melody = () => {
-      const beat = musicStep % notes.length;
-      playNote(notes[beat], .13, .014, 'square');
-      if (beat % 2 === 0) playNote(notes[(beat + 4) % notes.length] / 2, .2, .009, 'triangle');
-      if (beat % 4 === 2) playNote(notes[(beat + 7) % notes.length] * 2, .07, .006, 'square');
+      const beat = musicStep % melodyNotes.length;
+      playNote(melodyNotes[beat], .19, .012, 'triangle');
+      if (beat % 4 === 0) playNote(bassNotes[Math.floor(beat / 4) % bassNotes.length], .38, .012, 'sine');
+      if (beat % 4 === 2) playNote(melodyNotes[(beat + 4) % melodyNotes.length] * 2, .28, .004, 'sine');
       musicStep++;
     };
-    melody(); musicTimer = setInterval(melody, 210);
+    melody(); musicTimer = setInterval(melody, 250);
   } else { clearInterval(musicTimer); musicTimer = null; }
   $('#musicToggle').textContent = musicOn ? '♫ Music on' : '♫ Music off'; $('#musicToggle').setAttribute('aria-pressed', String(musicOn));
 }
