@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: color-dash
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+
