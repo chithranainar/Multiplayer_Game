@@ -18,7 +18,7 @@ const api = async (path, method = 'GET', data) => {
 function flash(message) { const el = $('#toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2400); }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 function avatarVisual(value, extra = '') {
-  if (/^anime-(?:male|female)-[1-4]$/.test(value || '')) return `<span class="avatar-art cartoon-avatar ${value}" role="img" aria-label="${value.includes('male') ? 'Male' : 'Female'} cartoon avatar"></span>`;
+  if (/^anime-(?:male|female)-[1-4]$/.test(value || '')) return `<span class="avatar-art cartoon-avatar ${value}" role="img" aria-label="${value.startsWith('anime-male-') ? 'Male' : 'Female'} cartoon avatar"></span>`;
   if (/^data:image\/(?:jpeg|png|webp);base64,/i.test(value || '')) return `<img class="avatar-art ${extra}" src="${escapeHtml(value)}" alt="Player photo"/>`;
   if (value === 'computer') return `<span class="robot-avatar ${extra}" aria-label="Computer">🤖</span>`;
   return `<span class="emoji-avatar ${extra}">${escapeHtml(value || 'anime-female-1')}</span>`;
@@ -143,7 +143,6 @@ function tapGraphic(button, correct) {
   const fx = document.createElement('span'); fx.className = 'tap-feedback'; fx.textContent = correct ? '✦ NICE!' : '✕'; button.append(fx);
   setTimeout(() => { button.classList.remove('tap-pop-correct', 'tap-pop-right', 'tap-pop-wrong'); fx.remove(); }, 900);
   if (musicOn) { if (correct) { playNote(783.99, .15, .035); setTimeout(() => playNote(1046.5, .18, .035), 90); } else playNote(220, .2, .025, 'triangle'); }
-  return fx;
 }
 function render() {
   if (!room) return;
@@ -178,7 +177,6 @@ function drawRound() {
 async function answer(button) {
   if (room.phase !== 'playing' || room.players.find(p => p.id === room.me)?.answered) return;
   $('#choices').querySelectorAll('button').forEach(b => b.disabled = true);
-  const before = room.players.find(p => p.id === room.me)?.score || 0;
   const correct = button.dataset.name === room.target.name; button.classList.add(correct ? 'correct' : 'wrong'); tapGraphic(button, correct);
   $('#tapPrompt').textContent = correct ? 'That’s the one! Nice reflexes.' : `Not quite — the target was ${room.target.name}.`;
   try {
