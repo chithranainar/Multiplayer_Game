@@ -56,7 +56,7 @@ function finishMatch(room) {
   if (room.matchSaved) return;
   recordRound(room);
   room.matchSaved = true;
-  room.matches.unshift({ number: room.matchNo, finishedAt: new Date().toISOString(),
+  room.matches.unshift({ roomCode: room.code, number: room.matchNo, finishedAt: new Date().toISOString(),
     players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score }))
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)),
     rounds: room.roundHistory });
