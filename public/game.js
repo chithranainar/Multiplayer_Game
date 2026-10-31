@@ -5,7 +5,7 @@ const avatarPresets = [
   ['anime-male-1', 'Kai'], ['anime-male-2', 'Ren'], ['anime-male-3', 'Sora'], ['anime-male-4', 'Haru'],
   ['anime-female-1', 'Aiko'], ['anime-female-2', 'Mika'], ['anime-female-3', 'Yuna'], ['anime-female-4', 'Emi'],
 ];
-let code = '', token = '', room = null, poller = null, ticker = null, toastTimer = null, drawnRound = -1;
+let code = '', token = '', room = null, poller = null, ticker = null, toastTimer = null, drawnRound = -1, celebrationTimer = null;
 let savedPhoto = localStorage.getItem('colorDashPhoto') || '';
 let selectedAvatar = localStorage.getItem('colorDashAvatar') || 'anime-female-1';
 let audioContext = null, musicTimer = null, musicOn = false, musicStep = 0;
@@ -44,6 +44,15 @@ function setRoom(r) {
   const previousPhase = room?.phase, previousRound = room?.round; room = r;
   if (previousPhase !== r.phase || previousRound !== r.round) drawnRound = -1;
   saveMatches(); render();
+  if (r.phase === 'finished' && previousPhase !== 'finished') playWinnerBurst();
+}
+function playWinnerBurst() {
+  const panel = $('#finishedView');
+  panel.classList.remove('celebrate');
+  void panel.offsetWidth;
+  panel.classList.add('celebrate');
+  clearTimeout(celebrationTimer);
+  celebrationTimer = setTimeout(() => panel.classList.remove('celebrate'), 2400);
 }
 async function createRoom() {
   try { const d = await api('/api/create', 'POST', { name: name(), avatar: selectedAvatar }); code = d.room.code; token = d.token; setRoom(d.room); showGame(); startPolling(); }
