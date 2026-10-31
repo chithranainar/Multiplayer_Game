@@ -154,7 +154,7 @@ const server = http.createServer(async (req, res) => {
     if (!file.startsWith(ROOT)) return respond(res, 403, { error: 'Forbidden' });
     fs.readFile(file, (err, data) => {
       if (err) return respond(res, 404, { error: 'Not found' });
-      const ext = path.extname(file); const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+      const ext = path.extname(file); const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
       res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' }); res.end(data);
     }); return;
   }
