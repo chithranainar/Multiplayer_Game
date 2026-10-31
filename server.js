@@ -28,7 +28,7 @@ function publicRoom(room, token) {
     target: room.phase === 'playing' ? { ...room.target, inkHex: room.inkColor?.hex } : null,
     choices: room.phase === 'playing' ? room.choices : [],
     endsAt: room.endsAt,
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, answered: !!p.answered, isBot: !!p.isBot })),
+    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, answered: !!p.answered, isBot: !!p.isBot, forfeited: !!p.forfeited })),
     matches: room.matches, roundHistory: room.roundHistory, matchNo: room.matchNo,
     me: [...room.players.values()].find(p => p.token === token)?.id || null,
     host: room.host,
@@ -40,7 +40,7 @@ function beginRound(room) {
   const others = COLORS.filter(c => c.name !== room.target.name);
   room.inkColor = others[Math.floor(Math.random() * others.length)];
   room.choices = [room.target, ...others.sort(() => Math.random() - .5).slice(0, 3)].sort(() => Math.random() - .5);
-  for (const p of room.players.values()) p.answered = false;
+  for (const p of room.players.values()) p.answered = !!p.forfeited;
   room.roundBaseScores = new Map([...room.players.values()].map(p => [p.id, p.score]));
   room.roundRecorded = false;
   room.endsAt = Date.now() + 9000;
@@ -64,13 +64,13 @@ function advanceRound(room) {
   if (room.phase === 'finished') finishMatch(room);
 }
 function completeRoundIfReady(room) {
-  if (room.phase === 'playing' && [...room.players.values()].every(p => p.answered)) advanceRound(room);
+  if (room.phase === 'playing' && [...room.players.values()].filter(p => !p.forfeited).every(p => p.answered)) advanceRound(room);
 }
 function recordRound(room) {
   if (room.roundRecorded) return;
   room.roundRecorded = true;
   room.roundHistory.push({ round: room.round, players: [...room.players.values()].map(p => ({
-    id: p.id, name: p.name, avatar: p.avatar, points: p.score - (room.roundBaseScores?.get(p.id) || 0), total: p.score,
+    id: p.id, name: p.name, avatar: p.avatar, points: p.forfeited ? 0 : p.score - (room.roundBaseScores?.get(p.id) || 0), total: p.score, forfeited: !!p.forfeited,
   })) });
 }
 function finishMatch(room) {
@@ -78,8 +78,8 @@ function finishMatch(room) {
   recordRound(room);
   room.matchSaved = true;
   room.matches.unshift({ roomCode: room.code, number: room.matchNo, finishedAt: new Date().toISOString(),
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score }))
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)),
+    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, forfeited: !!p.forfeited }))
+      .sort((a, b) => Number(a.forfeited) - Number(b.forfeited) || b.score - a.score || a.name.localeCompare(b.name)),
     rounds: room.roundHistory });
   room.matches = room.matches.slice(0, 20);
 }
@@ -116,6 +116,7 @@ const server = http.createServer(async (req, res) => {
     if (!room) return respond(res, 404, { error: 'Room closed.' });
     const token = req.headers['x-player-token']; const player = [...room.players.values()].find(p => p.token === token);
     if (!player) return respond(res, 401, { error: 'Session expired. Rejoin the room.' });
+    if (player.forfeited) return respond(res, 403, { error: 'You left this match and forfeited your place. You can’t rejoin this game.' });
     if (req.method === 'GET' && !action) return respond(res, 200, { room: publicRoom(room, token) });
     if (req.method === 'POST' && action === 'start') {
       if (player.id !== room.host) return respond(res, 403, { error: 'Only the host can start.' });
@@ -137,15 +138,22 @@ const server = http.createServer(async (req, res) => {
       if (room.phase === 'between') beginRound(room);
       else if (room.phase === 'finished') {
         room.phase = 'lobby'; room.round = 0; room.matchNo += 1; room.roundHistory = []; room.roundRecorded = false; room.matchSaved = false;
-        for (const p of room.players.values()) p.score = 0;
+        for (const [playerId, p] of room.players) { if (p.forfeited) room.players.delete(playerId); else p.score = 0; }
       }
       return respond(res, 200, { room: publicRoom(room, token) });
     }
     if (req.method === 'POST' && action === 'leave') {
-      room.players.delete(player.id);
-      if (![...room.players.values()].some(p => !p.isBot)) { clearTimeout(room.timer); clearTimeout(room.botTimer); rooms.delete(room.code); return respond(res, 200, { ok: true }); }
-      if (room.host === player.id) room.host = room.players.keys().next().value;
-      completeRoundIfReady(room);
+      if (room.phase === 'playing' || room.phase === 'between') {
+        player.forfeited = true; player.answered = true;
+        const nextHost = [...room.players.values()].find(p => !p.forfeited && !p.isBot);
+        if (room.host === player.id) room.host = nextHost?.id || null;
+        if (!nextHost) { clearTimeout(room.timer); clearTimeout(room.botTimer); rooms.delete(room.code); return respond(res, 200, { ok: true, forfeited: true }); }
+        completeRoundIfReady(room);
+      } else if (room.phase === 'lobby') {
+        room.players.delete(player.id);
+        if (![...room.players.values()].some(p => !p.isBot)) { clearTimeout(room.timer); clearTimeout(room.botTimer); rooms.delete(room.code); return respond(res, 200, { ok: true }); }
+        if (room.host === player.id) room.host = [...room.players.values()].find(p => !p.isBot)?.id || null;
+      }
       return respond(res, 200, { ok: true });
     }
   }
@@ -162,5 +170,5 @@ const server = http.createServer(async (req, res) => {
   respond(res, 404, { error: 'Not found' });
 });
 setInterval(() => { for (const [code, room] of rooms) if (Date.now() - room.createdAt > 6 * 3600_000) rooms.delete(code); }, 60_000).unref();
-server.listen(PORT, () => console.log(`Color Dash listening on ${PORT}`));
+server.listen(PORT, () => console.log(`Ink Clash listening on ${PORT}`));
 
