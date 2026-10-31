@@ -15,11 +15,15 @@ function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp
 function name() { return $('#playerName').value.trim() || 'Player'; }
 function historyKey() { return `colorDashHistory:${code}`; }
 function getSavedMatches() { try { return JSON.parse(localStorage.getItem(historyKey()) || '[]'); } catch { return []; } }
+function getAllSavedMatches() { try { return JSON.parse(localStorage.getItem('colorDashHistoryAll') || '[]'); } catch { return []; } }
 function saveMatches() {
   if (!room?.matches?.length || !code) return;
   try {
-    const all = new Map([...getSavedMatches(), ...room.matches].map(m => [m.number, m]));
-    localStorage.setItem(historyKey(), JSON.stringify([...all.values()].sort((a, b) => b.number - a.number).slice(0, 20)));
+    const current = new Map([...getSavedMatches(), ...room.matches].map(m => [m.number, m]));
+    const currentMatches = [...current.values()].sort((a, b) => b.number - a.number).slice(0, 20);
+    localStorage.setItem(historyKey(), JSON.stringify(currentMatches));
+    const all = new Map([...getAllSavedMatches(), ...room.matches].map(m => [`${m.roomCode || code}:${m.number}`, { ...m, roomCode: m.roomCode || code }]));
+    localStorage.setItem('colorDashHistoryAll', JSON.stringify([...all.values()].sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt))).slice(0, 50)));
   } catch {}
 }
 function showGame() { $('#home').classList.add('hidden'); $('#game').classList.remove('hidden'); $('#gameCode').textContent = code; $('#inviteCode').textContent = code; }
@@ -83,14 +87,14 @@ function renderFinalBoard() {
   renderBreakdown($('#finalRounds'), room.roundHistory);
 }
 function renderHistory() {
-  const all = new Map([...getSavedMatches(), ...(room?.matches || [])].map(m => [m.number, m]));
-  const matches = [...all.values()].sort((a, b) => b.number - a.number).slice(0, 20);
+  const all = new Map([...getAllSavedMatches(), ...(room?.matches || [])].map(m => [`${m.roomCode || code}:${m.number}`, { ...m, roomCode: m.roomCode || code }]));
+  const matches = [...all.values()].sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt))).slice(0, 50);
   const target = $('#historyContent');
   if (!matches.length) { target.innerHTML = '<div class="history-empty">Your completed matches will show up here.</div>'; return; }
   target.innerHTML = matches.map(m => {
     const winner = m.players?.[0]; const date = m.finishedAt ? new Date(m.finishedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
     const board = (m.players || []).map((p, i) => `<div class="history-player"><span class="rank">${i + 1}</span><span>${escapeHtml(p.avatar || avatars[0])}</span><b>${escapeHtml(p.name)}</b><strong>${p.score.toLocaleString()}</strong></div>`).join('');
-    return `<article class="history-match"><div class="history-match-head"><b>MATCH ${m.number}</b><span>${escapeHtml(date)}</span></div><p>🏆 ${escapeHtml(winner?.name || 'Match complete')} won with ${(winner?.score || 0).toLocaleString()} points</p><div class="history-board">${board}</div><details><summary>Round-by-round graphics</summary><div class="history-chart-wrap"></div></details></article>`;
+    return `<article class="history-match"><div class="history-match-head"><b>ROOM ${escapeHtml(m.roomCode || '')} · MATCH ${m.number}</b><span>${escapeHtml(date)}</span></div><p>🏆 ${escapeHtml(winner?.name || 'Match complete')} won with ${(winner?.score || 0).toLocaleString()} points</p><div class="history-board">${board}</div><details><summary>Round-by-round graphics</summary><div class="history-chart-wrap"></div></details></article>`;
   }).join('');
   const wraps = target.querySelectorAll('.history-chart-wrap');
   matches.forEach((m, i) => { if (wraps[i]) renderBreakdown(wraps[i], m.rounds); });
@@ -118,6 +122,7 @@ function tapGraphic(button, correct) {
   const fx = document.createElement('span'); fx.className = 'tap-feedback'; fx.textContent = correct ? '✦ NICE!' : '✕'; button.append(fx);
   setTimeout(() => { button.classList.remove('tap-pop-correct', 'tap-pop-right', 'tap-pop-wrong'); fx.remove(); }, 900);
   if (musicOn) { if (correct) { playNote(783.99, .15, .035); setTimeout(() => playNote(1046.5, .18, .035), 90); } else playNote(220, .2, .025, 'triangle'); }
+  return fx;
 }
 function render() {
   if (!room) return;
@@ -153,9 +158,15 @@ function drawRound() {
 async function answer(button) {
   if (room.phase !== 'playing' || room.players.find(p => p.id === room.me)?.answered) return;
   $('#choices').querySelectorAll('button').forEach(b => b.disabled = true);
-  const correct = button.dataset.name === room.target.name; button.classList.add(correct ? 'correct' : 'wrong'); tapGraphic(button, correct);
+  const before = room.players.find(p => p.id === room.me)?.score || 0;
+  const correct = button.dataset.name === room.target.name; button.classList.add(correct ? 'correct' : 'wrong'); const fx = tapGraphic(button, correct);
   $('#tapPrompt').textContent = correct ? 'That’s the one! Nice reflexes.' : `Not quite — the target was ${room.target.name}.`;
-  try { const d = await api(`/api/room/${code}/answer`, 'POST', { choice: button.dataset.name }); setRoom(d.room); }
+  try {
+    const d = await api(`/api/room/${code}/answer`, 'POST', { choice: button.dataset.name });
+    const after = d.room.players.find(p => p.id === d.room.me)?.score || before; const points = after - before;
+    if (points > 0) fx.textContent = `+${points}`;
+    setRoom(d.room);
+  }
   catch (e) { flash(e.message); }
 }
 function updateChoiceLocks() {
