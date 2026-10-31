@@ -37,4 +37,5 @@ body{color:#281641;background:radial-gradient(ellipse at 8% 9%,#ff8dac52,transpa
 @media(prefers-reduced-motion:no-preference){body{animation:playroom-drift 18s ease-in-out infinite alternate}.btn-primary{animation:candy-glow 3.2s ease-in-out infinite alternate}.choice,.avatar-option{transition:transform .18s ease,box-shadow .2s ease,border-color .2s ease}@keyframes playroom-drift{from{background-position:0% 0%}to{background-position:100% 100%}}@keyframes candy-glow{from{box-shadow:0 8px 20px #8c5cee25}to{box-shadow:0 12px 28px #ff668b49}}}
 @media(max-width:560px){body{background-attachment:scroll}.round-panel .big-target{font-size:clamp(48px,14vw,76px)}.choice kbd{width:17px;height:17px;font-size:9px}}
 
+.final-score-row.forfeited-row{opacity:.72;border-style:dashed}.forfeited-player{opacity:.72}
 
