@@ -1,8 +1,13 @@
 const $ = (s) => document.querySelector(s);
 const palette = ['#c8f36b', '#a58af7', '#ff8a7d', '#65c9e8', '#ffc857', '#f08bc3'];
-const avatars = ['🐱', '🦊', '🐼', '🐸', '🐯', '🐰', '🐲', '🐺'];
+const legacyAvatars = ['🐱', '🦊', '🐼', '🐸', '🐯', '🐰', '🐲', '🐺'];
+const avatarPresets = [
+  ['anime-male-1', 'Kai'], ['anime-male-2', 'Ren'], ['anime-male-3', 'Sora'], ['anime-male-4', 'Haru'],
+  ['anime-female-1', 'Aiko'], ['anime-female-2', 'Mika'], ['anime-female-3', 'Yuna'], ['anime-female-4', 'Emi'],
+];
 let code = '', token = '', room = null, poller = null, ticker = null, toastTimer = null, drawnRound = -1;
-let selectedAvatar = localStorage.getItem('colorDashAvatar') || avatars[0];
+let savedPhoto = localStorage.getItem('colorDashPhoto') || '';
+let selectedAvatar = localStorage.getItem('colorDashAvatar') || 'anime-female-1';
 let audioContext = null, musicTimer = null, musicOn = false, musicStep = 0;
 const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 739.99, 880, 739.99];
 
@@ -12,6 +17,28 @@ const api = async (path, method = 'GET', data) => {
 };
 function flash(message) { const el = $('#toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2400); }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+function animeAvatarUri(id) {
+  const match = /^anime-(male|female)-([1-4])$/.exec(id); if (!match) return '';
+  const female = match[1] === 'female', variant = Number(match[2]) - 1;
+  const hair = ['#38283f', '#8a4a32', '#283e60', '#b6556f'][variant];
+  const skin = ['#f6c8a8', '#eab795', '#f4d0b1', '#d99b79'][variant];
+  const shirt = ['#a58af7', '#65c9e8', '#ff8a7d', '#c8f36b'][variant];
+  const backHair = female
+    ? `<path d="M18 49C14 19 29 8 49 8c23 0 35 15 31 41l-5 31H22z" fill="${hair}"/>`
+    : `<path d="M20 42C17 19 31 9 49 9c21 0 31 13 28 34l-8 7H27z" fill="${hair}"/>`;
+  const fringe = female
+    ? `<path d="M21 34c4-17 16-22 28-22 14 0 23 8 27 22-9-4-15-12-18-14-4 10-17 16-37 14z" fill="${hair}"/>`
+    : `<path d="M20 37c1-19 13-28 29-28 17 0 27 10 28 26-9-3-13-9-18-15-7 9-20 15-39 17z" fill="${hair}"/>`;
+  const sideHair = female ? `<path d="M21 35c-4 18-1 37 5 48H17C8 62 12 42 21 35zm53 0c9 13 9 33 2 48h-9c5-17 4-32 7-48z" fill="${hair}"/>` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><circle cx="48" cy="48" r="47" fill="#343044"/><circle cx="48" cy="48" r="41" fill="${shirt}" opacity=".25"/><path d="M17 96c2-20 13-27 31-27s29 7 31 27" fill="${shirt}"/><path d="M39 64h18v17H39z" fill="${skin}"/>${backHair}<ellipse cx="48" cy="47" rx="24" ry="28" fill="${skin}"/><path d="M26 44c5-2 10-2 15 0m14 0c5-2 10-2 15 0" fill="none" stroke="#593e4c" stroke-width="2" stroke-linecap="round"/><ellipse cx="36" cy="49" rx="5" ry="7" fill="#fff"/><ellipse cx="60" cy="49" rx="5" ry="7" fill="#fff"/><ellipse cx="37" cy="51" rx="2.4" ry="4" fill="#433656"/><ellipse cx="61" cy="51" rx="2.4" ry="4" fill="#433656"/><circle cx="36" cy="49" r="1.2" fill="#fff"/><circle cx="60" cy="49" r="1.2" fill="#fff"/><path d="M43 64c3 3 8 3 11 0" fill="none" stroke="#ae5e67" stroke-width="2" stroke-linecap="round"/><path d="M27 58c4 3 7 3 10 2m32 0c3 1 6 1 10-2" fill="none" stroke="#e58a8a" stroke-width="3" stroke-linecap="round" opacity=".55"/>${sideHair}${fringe}<path d="M42 27c5-4 12-4 17 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+function avatarVisual(value, extra = '') {
+  if (/^anime-(?:male|female)-[1-4]$/.test(value || '')) return `<img class="avatar-art ${extra}" src="${escapeHtml(animeAvatarUri(value))}" alt=""/>`;
+  if (/^data:image\/(?:jpeg|png|webp);base64,/i.test(value || '')) return `<img class="avatar-art ${extra}" src="${escapeHtml(value)}" alt="Player photo"/>`;
+  if (value === 'computer') return `<span class="robot-avatar ${extra}" aria-label="Computer">🤖</span>`;
+  return `<span class="emoji-avatar ${extra}">${escapeHtml(value || 'anime-female-1')}</span>`;
+}
 function name() { return $('#playerName').value.trim() || 'Player'; }
 function historyKey() { return `colorDashHistory:${code}`; }
 function getSavedMatches() { try { return JSON.parse(localStorage.getItem(historyKey()) || '[]'); } catch { return []; } }
@@ -35,6 +62,10 @@ function setRoom(r) {
 }
 async function createRoom() {
   try { const d = await api('/api/create', 'POST', { name: name(), avatar: selectedAvatar }); code = d.room.code; token = d.token; setRoom(d.room); showGame(); startPolling(); }
+  catch (e) { flash(e.message); }
+}
+async function createSolo() {
+  try { const d = await api('/api/create', 'POST', { name: name(), avatar: selectedAvatar, mode: 'solo' }); code = d.room.code; token = d.token; setRoom(d.room); showGame(); startPolling(); }
   catch (e) { flash(e.message); }
 }
 async function joinRoom(input) {
@@ -73,17 +104,17 @@ function startPolling() {
 }
 function sortedPlayers(players) { return [...players].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)); }
 function scores(target) {
-  target.innerHTML = sortedPlayers(room.players).map((p, i) => `<div class="score-row"><span class="avatar-score">${escapeHtml(p.avatar || avatars[0])}</span><span class="mini-dot" style="background:${palette[i % palette.length]}"></span><span>${escapeHtml(p.name)}${p.id === room.me ? ' <small>(you)</small>' : ''}</span><b>${p.score.toLocaleString()}</b>${p.answered && room.phase === 'playing' ? '<span class="answered-mark">✓</span>' : ''}</div>`).join('');
+  target.innerHTML = sortedPlayers(room.players).map((p, i) => `<div class="score-row"><span class="avatar-score">${avatarVisual(p.avatar || 'anime-female-1')}</span><span class="mini-dot" style="background:${palette[i % palette.length]}"></span><span>${escapeHtml(p.name)}${p.isBot ? ' <small>CPU</small>' : p.id === room.me ? ' <small>(you)</small>' : ''}</span><b>${p.score.toLocaleString()}</b>${p.answered && room.phase === 'playing' ? '<span class="answered-mark">✓</span>' : ''}</div>`).join('');
 }
 function renderBreakdown(target, rounds) {
   if (!rounds?.length) { target.innerHTML = ''; return; }
   const players = [...new Map(rounds.flatMap(r => r.players).map(p => [p.id, p])).values()];
   const max = Math.max(1, ...rounds.flatMap(r => r.players.map(p => p.points)));
-  target.innerHTML = `<div class="chart-heading">POINTS BY ROUND</div><div class="round-chart">${rounds.map(r => `<section class="round-chart-card"><b class="chart-round">ROUND ${r.round}</b>${players.map((p, i) => { const result = r.players.find(x => x.id === p.id); const pts = result?.points || 0; return `<div class="bar-row"><span>${escapeHtml(p.avatar || avatars[0])}</span><div class="bar-track"><i style="width:${Math.max(3, pts / max * 100)}%;background:${palette[i % palette.length]}"></i></div><b>${pts}</b></div>`; }).join('')}</section>`).join('')}</div>`;
+  target.innerHTML = `<div class="chart-heading">POINTS BY ROUND</div><div class="round-chart">${rounds.map(r => `<section class="round-chart-card"><b class="chart-round">ROUND ${r.round}</b>${players.map((p, i) => { const result = r.players.find(x => x.id === p.id); const pts = result?.points || 0; return `<div class="bar-row"><span>${avatarVisual(p.avatar || 'anime-female-1')}</span><div class="bar-track"><i style="width:${Math.max(3, pts / max * 100)}%;background:${palette[i % palette.length]}"></i></div><b>${pts}</b></div>`; }).join('')}</section>`).join('')}</div>`;
 }
 function renderFinalBoard() {
   const ranked = sortedPlayers(room.players), max = Math.max(1, ...ranked.map(p => p.score));
-  $('#finalScores').innerHTML = ranked.map((p, i) => `<div class="final-score-row ${i === 0 ? 'winner-row' : ''}"><span class="rank">${String(i + 1).padStart(2, '0')}</span><span class="final-avatar">${escapeHtml(p.avatar || avatars[0])}</span><div class="final-player"><div><b>${escapeHtml(p.name)}</b>${p.id === room.me ? '<small>YOU</small>' : ''}</div><div class="score-meter"><i style="width:${p.score / max * 100}%"></i></div></div><strong>${p.score.toLocaleString()}</strong></div>`).join('');
+  $('#finalScores').innerHTML = ranked.map((p, i) => `<div class="final-score-row ${i === 0 ? 'winner-row' : ''}"><span class="rank">${String(i + 1).padStart(2, '0')}</span><span class="final-avatar">${avatarVisual(p.avatar || 'anime-female-1')}</span><div class="final-player"><div><b>${escapeHtml(p.name)}</b>${p.isBot ? '<small>CPU</small>' : p.id === room.me ? '<small>YOU</small>' : ''}</div><div class="score-meter"><i style="width:${p.score / max * 100}%"></i></div></div><strong>${p.score.toLocaleString()}</strong></div>`).join('');
   renderBreakdown($('#finalRounds'), room.roundHistory);
 }
 function renderHistory() {
@@ -93,7 +124,7 @@ function renderHistory() {
   if (!matches.length) { target.innerHTML = '<div class="history-empty">Your completed matches will show up here.</div>'; return; }
   target.innerHTML = matches.map(m => {
     const winner = m.players?.[0]; const date = m.finishedAt ? new Date(m.finishedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
-    const board = (m.players || []).map((p, i) => `<div class="history-player"><span class="rank">${i + 1}</span><span>${escapeHtml(p.avatar || avatars[0])}</span><b>${escapeHtml(p.name)}</b><strong>${p.score.toLocaleString()}</strong></div>`).join('');
+    const board = (m.players || []).map((p, i) => `<div class="history-player"><span class="rank">${i + 1}</span><span>${avatarVisual(p.avatar || 'anime-female-1')}</span><b>${escapeHtml(p.name)}</b><strong>${p.score.toLocaleString()}</strong></div>`).join('');
     return `<article class="history-match"><div class="history-match-head"><b>ROOM ${escapeHtml(m.roomCode || '')} · MATCH ${m.number}</b><span>${escapeHtml(date)}</span></div><p>🏆 ${escapeHtml(winner?.name || 'Match complete')} won with ${(winner?.score || 0).toLocaleString()} points</p><div class="history-board">${board}</div><details><summary>Round-by-round graphics</summary><div class="history-chart-wrap"></div></details></article>`;
   }).join('');
   const wraps = target.querySelectorAll('.history-chart-wrap');
@@ -127,9 +158,10 @@ function tapGraphic(button, correct) {
 function render() {
   if (!room) return;
   $('#gameCode').textContent = room.code; $('#inviteCode').textContent = room.code;
+  $('#roomType').textContent = room.mode === 'solo' ? 'SOLO' : 'ROOM'; $('#copyCode').classList.toggle('hidden', room.mode === 'solo');
   $('#roundInfo').textContent = room.phase === 'playing' ? `ROUND ${room.round} / 4` : room.phase === 'finished' ? 'FINAL SCORES' : room.phase === 'between' ? 'ROUND BREAK' : 'LOBBY';
   $('#playerCount').textContent = room.players.length;
-  $('#playerList').innerHTML = room.players.map((p, i) => `<div class="player-chip"><span class="avatar" style="background:${palette[i % palette.length]}">${escapeHtml(p.avatar || avatars[0])}</span>${escapeHtml(p.name)}${p.id === room.host ? '<span class="host-tag">HOST</span>' : ''}${p.id === room.me ? '<span class="host-tag">YOU</span>' : ''}</div>`).join('');
+  $('#playerList').innerHTML = room.players.map((p, i) => `<div class="player-chip"><span class="avatar" style="background:${palette[i % palette.length]}">${avatarVisual(p.avatar || 'anime-female-1')}</span>${escapeHtml(p.name)}${p.isBot ? '<span class="host-tag">CPU</span>' : p.id === room.host ? '<span class="host-tag">HOST</span>' : ''}${p.id === room.me ? '<span class="host-tag">YOU</span>' : ''}</div>`).join('');
   const isHost = room.me === room.host;
   $('#lobbyView').classList.toggle('hidden', room.phase !== 'lobby'); $('#roundView').classList.toggle('hidden', room.phase !== 'playing');
   $('#betweenView').classList.toggle('hidden', room.phase !== 'between'); $('#finishedView').classList.toggle('hidden', room.phase !== 'finished');
@@ -182,15 +214,37 @@ function drawTimer() {
 }
 function leaveGame() { if (code && token) api(`/api/room/${code}/leave`, 'POST').catch(() => {}); clearInterval(poller); clearInterval(ticker); showHome(); room = null; code = ''; token = ''; }
 function initAvatars() {
-  if (!avatars.includes(selectedAvatar)) selectedAvatar = avatars[0];
-  $('#avatarOptions').innerHTML = avatars.map(a => `<button type="button" class="avatar-option ${a === selectedAvatar ? 'selected' : ''}" data-avatar="${a}" aria-label="Choose ${a}" aria-pressed="${a === selectedAvatar}">${a}</button>`).join('');
-  $('#avatarOptions').querySelectorAll('.avatar-option').forEach(b => b.addEventListener('click', () => {
-    selectedAvatar = b.dataset.avatar; localStorage.setItem('colorDashAvatar', selectedAvatar);
-    $('#avatarOptions').querySelectorAll('.avatar-option').forEach(x => { x.classList.toggle('selected', x === b); x.setAttribute('aria-pressed', String(x === b)); });
-  }));
+  if (!/^anime-(?:male|female)-[1-4]$/.test(selectedAvatar) && !legacyAvatars.includes(selectedAvatar) && !/^data:image\/(?:jpeg|png|webp);base64,/i.test(selectedAvatar)) selectedAvatar = 'anime-female-1';
+  function paint() {
+    const options = avatarPresets.map(([id, label]) => `<button type="button" class="avatar-option ${selectedAvatar === id ? 'selected' : ''}" data-avatar="${id}" aria-label="Choose ${label}" aria-pressed="${selectedAvatar === id}">${avatarVisual(id)}<small>${label}</small></button>`);
+    if (savedPhoto) options.push(`<button type="button" class="avatar-option photo-option ${selectedAvatar === savedPhoto ? 'selected' : ''}" data-photo="true" aria-label="Use your photo" aria-pressed="${selectedAvatar === savedPhoto}">${avatarVisual(savedPhoto)}<small>Your photo</small></button>`);
+    $('#avatarOptions').innerHTML = options.join('');
+    $('#avatarOptions').querySelectorAll('.avatar-option').forEach(b => b.addEventListener('click', () => {
+      selectedAvatar = b.dataset.photo ? savedPhoto : b.dataset.avatar; localStorage.setItem('colorDashAvatar', selectedAvatar);
+      $('#avatarOptions').querySelectorAll('.avatar-option').forEach(x => { const selected = x.dataset.photo ? selectedAvatar === savedPhoto : x.dataset.avatar === selectedAvatar; x.classList.toggle('selected', selected); x.setAttribute('aria-pressed', String(selected)); });
+    }));
+  }
+  paint();
+  $('#uploadAvatarBtn').addEventListener('click', () => $('#avatarFile').click());
+  $('#avatarFile').addEventListener('change', () => {
+    const file = $('#avatarFile').files?.[0]; if (!file) return;
+    if (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024) { flash('Choose an image under 10 MB.'); $('#avatarFile').value = ''; return; }
+    const objectUrl = URL.createObjectURL(file), image = new Image();
+    image.onload = () => {
+      const side = Math.min(image.naturalWidth, image.naturalHeight), x = (image.naturalWidth - side) / 2, y = (image.naturalHeight - side) / 2;
+      const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
+      canvas.getContext('2d').drawImage(image, x, y, side, side, 0, 0, 128, 128);
+      savedPhoto = canvas.toDataURL('image/jpeg', .78); selectedAvatar = savedPhoto;
+      localStorage.setItem('colorDashPhoto', savedPhoto); localStorage.setItem('colorDashAvatar', selectedAvatar);
+      URL.revokeObjectURL(objectUrl); $('#avatarFile').value = ''; paint(); flash('Photo ready. It will be shared with your room.');
+    };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); $('#avatarFile').value = ''; flash('That image could not be opened. Choose another one.'); };
+    image.src = objectUrl;
+  });
 }
 
 $('#createBtn').addEventListener('click', createRoom);
+$('#soloBtn').addEventListener('click', createSolo);
 $('#joinToggle').addEventListener('click', () => { $('#joinForm').classList.toggle('hidden'); if (!$('#joinForm').classList.contains('hidden')) $('#roomCode').focus(); });
 $('#joinForm').addEventListener('submit', e => { e.preventDefault(); joinRoom($('#roomCode').value); });
 $('#startBtn').addEventListener('click', async () => { try { setRoom((await api(`/api/room/${code}/start`, 'POST')).room); } catch (e) { flash(e.message); } });
