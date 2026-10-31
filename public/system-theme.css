@@ -1,5 +1,8 @@
 /* Automatically follow the device's light or dark appearance. */
 :root{color-scheme:light dark}
+@media(prefers-color-scheme:light){
+  .btn-primary,.btn-primary span,.btn-secondary,.btn-secondary span,.menu-button,.music-toggle,.music-toggle[aria-pressed=true],.choice,.back-btn,.room-pill button,.share-close{color:#281641;font-weight:800}
+}
 @media(prefers-color-scheme:dark){
   :root{--ink:#10121b;--panel:#1b1e2c;--panel2:#25283a;--muted:#b9b4cc;--line:#3b3652;--white:#f9f6ff}
   body{color:#f9f6ff;background:radial-gradient(ellipse at 8% 9%,#a8476f32,transparent 29%),radial-gradient(ellipse at 89% 15%,#237f9b33,transparent 31%),radial-gradient(ellipse at 75% 88%,#6547a633,transparent 34%),linear-gradient(145deg,#10121b,#1c1730 51%,#111c2b);background-attachment:fixed}
