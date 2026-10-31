@@ -19,6 +19,30 @@ async function joinRoom(input) {
   try { const d = await api('/api/join', 'POST', { code: target, name: name() }); code = d.room.code; token = d.token; setRoom(d.room); showGame(); startPolling(); }
   catch (e) { flash(e.message); }
 }
+function inviteUrl() { return `${location.origin}/?room=${encodeURIComponent(code)}`; }
+function inviteMessage() { return `Join my Color Dash game! Room code: ${code}\nTap to join: ${inviteUrl()}`; }
+async function copyText(value, success) {
+  try { await navigator.clipboard.writeText(value); flash(success); }
+  catch { openShareDialog(); flash('Use the invite options to copy or share the link.'); }
+}
+function openShareDialog() {
+  const url = inviteUrl(); const message = `Join my Color Dash game! Room code: ${code}`;
+  $('#inviteLink').value = url;
+  $('#waShare').href = `https://wa.me/?text=${encodeURIComponent(`${message}\n${url}`)}`;
+  $('#tgShare').href = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(message)}`;
+  $('#xShare').href = `https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}&url=${encodeURIComponent(url)}`;
+  $('#fbShare').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(message)}`;
+  $('#emailShare').href = `mailto:?subject=${encodeURIComponent('Join my Color Dash game')}&body=${encodeURIComponent(inviteMessage())}`;
+  $('#shareDialog').showModal();
+}
+async function shareInvite() {
+  if (!code) return;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Join my Color Dash game', text: `Room code: ${code}`, url: inviteUrl() }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  openShareDialog();
+}
 function startPolling() {
   clearInterval(poller); clearInterval(ticker);
   poller = setInterval(async () => { try { const d = await api(`/api/room/${code}`); setRoom(d.room); } catch (e) { clearInterval(poller); flash(e.message); } }, 850);
@@ -84,7 +108,14 @@ $('#joinForm').addEventListener('submit', e => { e.preventDefault(); joinRoom($(
 $('#startBtn').addEventListener('click', async () => { try { setRoom((await api(`/api/room/${code}/start`, 'POST')).room); } catch (e) { flash(e.message); } });
 $('#nextBtn').addEventListener('click', async () => { try { setRoom((await api(`/api/room/${code}/next`, 'POST')).room); } catch (e) { flash(e.message); } });
 $('#playAgainBtn').addEventListener('click', async () => { try { setRoom((await api(`/api/room/${code}/next`, 'POST')).room); } catch (e) { flash(e.message); } });
-async function copyCode() { try { await navigator.clipboard.writeText(code); flash('Room code copied! Send it to your friends.'); } catch { flash(`Room code: ${code}`); } }
+async function copyCode() { if (code) await copyText(inviteMessage(), 'Invite copied. Send it to your friends.'); }
 $('#copyCode').addEventListener('click', copyCode); $('#copyInvite').addEventListener('click', copyCode);
-$('#leaveBtn').addEventListener('click', async () => { try { await api(`/api/room/${code}/leave`, 'POST'); } catch {} clearInterval(poller); clearInterval(ticker); showHome(); room = null; code = ''; token = ''; });
+$('#shareInvite').addEventListener('click', shareInvite);
+$('#copyLinkBtn').addEventListener('click', () => copyText(inviteUrl(), 'Game link copied. Send it to your friends.'));
+$('#closeShare').addEventListener('click', () => $('#shareDialog').close());
+$('#shareDialog').addEventListener('click', e => { if (e.target === $('#shareDialog')) $('#shareDialog').close(); });
+async function leaveGame() { if (code && token) { try { await api(`/api/room/${code}/leave`, 'POST'); } catch {} } clearInterval(poller); clearInterval(ticker); showHome(); room = null; code = ''; token = ''; }
+$('#leaveBtn').addEventListener('click', leaveGame); $('#leaveBetweenBtn').addEventListener('click', leaveGame);
+const inviteRoom = new URLSearchParams(location.search).get('room');
+if (inviteRoom && /^[A-Z0-9]{6}$/i.test(inviteRoom)) { $('#roomCode').value = inviteRoom.toUpperCase(); $('#joinForm').classList.remove('hidden'); $('#joinToggle').textContent = `Join room ${inviteRoom.toUpperCase()} →`; }
 
